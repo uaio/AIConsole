@@ -4,8 +4,59 @@ import type { RemoteConfig } from './types/index.js';
 
 export const version = '0.1.0';
 
+/** 默认心跳间隔（毫秒） */
+const DEFAULT_HEARTBEAT_INTERVAL = 30000;
+
+/** 用于检测已存在 AIConsole 实例的符号 */
+const AICONSOLE_INSTANCE_KEY = Symbol.for('aiconsole.instance');
+
+interface OriginalConsole {
+  log: typeof console.log;
+  warn: typeof console.warn;
+  error: typeof console.error;
+  info: typeof console.info;
+}
+
 export interface AIConsoleOptions extends RemoteConfig {
   defaultPlugins?: string[];
+  /** 心跳间隔（毫秒），默认 30000 */
+  heartbeatInterval?: number;
+}
+
+/** 将参数序列化为字符串，正确处理对象 */
+function serializeArgs(args: unknown[]): string {
+  return args.map(arg => {
+    if (arg === undefined) {
+      return 'undefined';
+    }
+    if (arg === null) {
+      return 'null';
+    }
+    if (typeof arg === 'object') {
+      try {
+        return JSON.stringify(arg);
+      } catch {
+        // 处理循环引用等情况
+        return String(arg);
+      }
+    }
+    return String(arg);
+  }).join(' ');
+}
+
+/** 清理堆栈跟踪，移除拦截器帧 */
+function cleanStackTrace(stack: string | undefined): string | undefined {
+  if (!stack) return undefined;
+
+  const lines = stack.split('\n');
+  // 过滤掉包含 interceptConsole 或 serializeArgs 的帧
+  const cleanedLines = lines.filter(line =>
+    !line.includes('interceptConsole') &&
+    !line.includes('serializeArgs') &&
+    !line.includes('cleanStackTrace')
+  );
+
+  return cleanedLines.join('\n');
 }
 
 export class AIConsole {
@@ -14,15 +65,24 @@ export class AIConsole {
   private tabId: string;
   private projectId: string;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
+  private heartbeatIntervalMs: number;
+  private originalConsole: OriginalConsole | null = null;
 
   constructor(options: AIConsoleOptions) {
     if (!options.projectId) {
       throw new Error('projectId is required');
     }
 
+    // 检测是否已存在 AIConsole 实例
+    const existingInstance = (globalThis as Record<symbol, unknown>)[AICONSOLE_INSTANCE_KEY];
+    if (existingInstance) {
+      console.warn('AIConsole: 检测到已存在的实例，多个实例可能导致竞态条件');
+    }
+
     this.projectId = options.projectId;
     this.deviceInfo = getDeviceInfo(options.projectId);
     this.tabId = generateTabId();
+    this.heartbeatIntervalMs = options.heartbeatInterval ?? DEFAULT_HEARTBEAT_INTERVAL;
 
     this.reporter = new Reporter(this.deviceInfo, this.tabId);
 
@@ -35,15 +95,19 @@ export class AIConsole {
     // 拦截 console
     this.interceptConsole();
 
+    // 标记实例存在
+    (globalThis as Record<symbol, unknown>)[AICONSOLE_INSTANCE_KEY] = this;
+
     // 定期更新活跃时间
     this.heartbeatInterval = setInterval(() => {
       updateDeviceActiveTime(this.projectId);
       this.reporter.updateDeviceInfo();
-    }, 30000);
+    }, this.heartbeatIntervalMs);
   }
 
   private interceptConsole(): void {
-    const original = {
+    // 保存原始 console 方法
+    this.originalConsole = {
       log: console.log,
       warn: console.warn,
       error: console.error,
@@ -52,43 +116,42 @@ export class AIConsole {
 
     const self = this;
 
-    console.log = function (...args: any[]) {
-      original.log.apply(console, args);
-      self.reporter.reportConsole({
-        timestamp: Date.now(),
-        level: 'log',
-        message: args.map(a => String(a)).join(' ')
-      });
+    // 创建通用的 console 拦截处理函数
+    const createInterceptor = (level: 'log' | 'warn' | 'error' | 'info', originalFn: typeof console.log) => {
+      return function (...args: unknown[]) {
+        // 先调用原始方法
+        originalFn.apply(console, args);
+
+        // 安全地报告日志
+        try {
+          const message = serializeArgs(args);
+          const entry: {
+            timestamp: number;
+            level: 'log' | 'warn' | 'error' | 'info';
+            message: string;
+            stack?: string;
+          } = {
+            timestamp: Date.now(),
+            level,
+            message
+          };
+
+          // 只为 error 级别添加堆栈跟踪
+          if (level === 'error') {
+            entry.stack = cleanStackTrace(new Error().stack);
+          }
+
+          self.reporter.reportConsole(entry);
+        } catch {
+          // 静默处理报告错误，避免影响原始 console 输出
+        }
+      };
     };
 
-    console.warn = function (...args: any[]) {
-      original.warn.apply(console, args);
-      self.reporter.reportConsole({
-        timestamp: Date.now(),
-        level: 'warn',
-        message: args.map(a => String(a)).join(' ')
-      });
-    };
-
-    console.error = function (...args: any[]) {
-      original.error.apply(console, args);
-      const message = args.map(a => String(a)).join(' ');
-      self.reporter.reportConsole({
-        timestamp: Date.now(),
-        level: 'error',
-        message,
-        stack: new Error().stack
-      });
-    };
-
-    console.info = function (...args: any[]) {
-      original.info.apply(console, args);
-      self.reporter.reportConsole({
-        timestamp: Date.now(),
-        level: 'info',
-        message: args.map(a => String(a)).join(' ')
-      });
-    };
+    console.log = createInterceptor('log', this.originalConsole.log);
+    console.warn = createInterceptor('warn', this.originalConsole.warn);
+    console.error = createInterceptor('error', this.originalConsole.error);
+    console.info = createInterceptor('info', this.originalConsole.info);
   }
 
   enableRemote(): void {
@@ -104,10 +167,26 @@ export class AIConsole {
   }
 
   destroy(): void {
+    // 清除心跳定时器
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
     }
+
+    // 恢复原始 console 方法
+    if (this.originalConsole) {
+      console.log = this.originalConsole.log;
+      console.warn = this.originalConsole.warn;
+      console.error = this.originalConsole.error;
+      console.info = this.originalConsole.info;
+      this.originalConsole = null;
+    }
+
+    // 清除全局实例标记
+    if ((globalThis as Record<symbol, unknown>)[AICONSOLE_INSTANCE_KEY] === this) {
+      delete (globalThis as Record<symbol, unknown>)[AICONSOLE_INSTANCE_KEY];
+    }
+
     this.reporter.disconnect();
   }
 }
