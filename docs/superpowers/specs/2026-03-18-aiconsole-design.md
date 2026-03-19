@@ -297,20 +297,28 @@ interface NetworkEntry {
 ### 标识生成
 
 ```typescript
-// deviceId 基于 URL（不含参数）+ UA 生成
+// deviceId 基于 URL（不含参数）+ 完整 UA 字符串生成
 deviceId = hash(window.location.origin + window.location.pathname + navigator.userAgent)
 
-// 示例：
-// iPhone 访问 http://192.168.1.100:8080/home → deviceId: "a1b2c3"
-// Android 访问 http://192.168.1.100:8080/home → deviceId: "x9y8z7" (不同设备)
-// iPhone 访问 http://192.168.1.100:8080/home?token=xxx → deviceId: "a1b2c3" (相同)
-// iPhone 访问 http://192.168.1.100:8080/about → deviceId: "m5n6p8" (不同页面)
+// UA 示例：
+// "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15"
+// "Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 Chrome/120.0.0.0"
 ```
 
+**示例：**
+
+| 设备 | URL | deviceId |
+|------|-----|----------|
+| iPhone 17.2 | /home | `a1b2c3` |
+| iPhone 16.0 | /home | `x9y8z7` (不同 iOS 版本) |
+| Pixel 7 Android 14 | /home | `m5n6p8` (不同设备) |
+| iPhone 17.2 | /home?token=xxx | `a1b2c3` (相同，参数不影响) |
+| iPhone 17.2 | /about | `k3l4m5` (不同页面) |
+
 **设计理由：**
-- 同一地址 + 不同设备 = 不同 deviceId（区分 iPhone/Android）
-- 同一地址 + 同一设备 = 相同 deviceId（刷新保持）
-- 不同地址 = 不同 deviceId（区分页面）
+- 完整 UA 参与 hash，可区分：设备类型、系统版本、浏览器版本等
+- 同一物理设备刷新页面 = 相同 deviceId
+- 不同环境访问同一页面 = 不同 deviceId
 
 ### 持久化策略
 
