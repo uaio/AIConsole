@@ -1,0 +1,98 @@
+import type { RemoteConfig } from '../types/index.js';
+
+export type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+export interface TransportEvents {
+  onConnect?: () => void;
+  onDisconnect?: () => void;
+  onError?: (error: Error) => void;
+}
+
+export class WebSocketTransport {
+  private ws: WebSocket | null = null;
+  private serverUrl: string;
+  private state: ConnectionState = 'disconnected';
+  private reconnectAttempts = 0;
+  private readonly maxReconnectAttempts = 10;
+  private readonly reconnectDelay = 3000;
+  private events: TransportEvents;
+  private messageQueue: string[] = [];
+  private readonly maxQueueSize = 100;
+
+  constructor(config: RemoteConfig, events: TransportEvents = {}) {
+    this.serverUrl = config.server || this.getDefaultServerUrl();
+    this.events = events;
+  }
+
+  private getDefaultServerUrl(): string {
+    const host = window.location.hostname;
+    return `ws://${host}:3000`;
+  }
+
+  connect(): void {
+    if (this.state === 'connecting' || this.state === 'connected') {
+      return;
+    }
+
+    this.state = 'connecting';
+    this.reconnectAttempts++;
+
+    try {
+      this.ws = new WebSocket(this.serverUrl);
+
+      this.ws.onopen = () => {
+        this.state = 'connected';
+        this.reconnectAttempts = 0;
+        this.events.onConnect?.();
+
+        while (this.messageQueue.length > 0) {
+          const msg = this.messageQueue.shift();
+          if (msg) this.send(msg);
+        }
+      };
+
+      this.ws.onclose = () => {
+        this.state = 'disconnected';
+        this.events.onDisconnect?.();
+
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+          setTimeout(() => this.connect(), this.reconnectDelay);
+        }
+      };
+
+      this.ws.onerror = () => {
+        this.state = 'error';
+        this.events.onError?.(new Error('WebSocket connection failed'));
+      };
+    } catch (error) {
+      this.state = 'error';
+      this.events.onError?.(error as Error);
+    }
+  }
+
+  send(data: string): void {
+    if (this.state === 'connected' && this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(data);
+    } else {
+      if (this.messageQueue.length < this.maxQueueSize) {
+        this.messageQueue.push(data);
+      }
+    }
+  }
+
+  disconnect(): void {
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
+    }
+    this.state = 'disconnected';
+  }
+
+  getState(): ConnectionState {
+    return this.state;
+  }
+
+  getServerUrl(): string {
+    return this.serverUrl;
+  }
+}
