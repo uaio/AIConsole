@@ -1,3 +1,13 @@
 #!/usr/bin/env node
-import { startMCPServer } from '../dist/server.js';
-await startMCPServer();
+
+async function main() {
+  try {
+    const { startMCPServer } = await import('../dist/server.js');
+    await startMCPServer();
+  } catch (error) {
+    console.error('[Fatal Error] Failed to start MCP server:', error);
+    process.exit(1);
+  }
+}
+
+main();
