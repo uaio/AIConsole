@@ -297,14 +297,20 @@ interface NetworkEntry {
 ### 标识生成
 
 ```typescript
-// deviceId 基于 URL（不含查询参数）生成
-deviceId = hash(window.location.origin + window.location.pathname)
+// deviceId 基于 URL（不含参数）+ UA 生成
+deviceId = hash(window.location.origin + window.location.pathname + navigator.userAgent)
 
 // 示例：
-// http://192.168.1.100:8080/home → deviceId: "a1b2c3"
-// http://192.168.1.100:8080/home?token=xxx → deviceId: "a1b2c3" (相同)
-// http://192.168.1.100:8080/about → deviceId: "x9y8z7" (不同)
+// iPhone 访问 http://192.168.1.100:8080/home → deviceId: "a1b2c3"
+// Android 访问 http://192.168.1.100:8080/home → deviceId: "x9y8z7" (不同设备)
+// iPhone 访问 http://192.168.1.100:8080/home?token=xxx → deviceId: "a1b2c3" (相同)
+// iPhone 访问 http://192.168.1.100:8080/about → deviceId: "m5n6p8" (不同页面)
 ```
+
+**设计理由：**
+- 同一地址 + 不同设备 = 不同 deviceId（区分 iPhone/Android）
+- 同一地址 + 同一设备 = 相同 deviceId（刷新保持）
+- 不同地址 = 不同 deviceId（区分页面）
 
 ### 持久化策略
 
