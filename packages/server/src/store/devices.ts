@@ -16,10 +16,10 @@ export class DeviceStore {
   private cleanupTimer?: NodeJS.Timeout;
 
   constructor() {
-    // 每 5 分钟清理一次不活跃的设备
+    // 每 1 分钟清理一次离线设备（更快响应）
     this.cleanupTimer = setInterval(() => {
       this.cleanup();
-    }, 5 * 60 * 1000);
+    }, 1 * 60 * 1000);
   }
 
   register(deviceId: string, info: Omit<Device, 'deviceId' | 'online' | 'activeTabs'>): void {
@@ -63,13 +63,21 @@ export class DeviceStore {
     }
   }
 
-  // 清理 30 分钟未活跃的设备
+  // 清理 10 分钟未活跃的设备
   cleanup(): void {
-    const threshold = Date.now() - 30 * 60 * 1000;
-    for (const [id, device] of this.devices) {
+    const threshold = Date.now() - 10 * 60 * 1000;
+    const deletedIds: string[] = [];
+
+    for (const [id, device] of this.devices.entries()) {
       if (!device.online && device.lastActiveTime < threshold) {
+        deletedIds.push(id);
         this.devices.delete(id);
       }
+    }
+
+    // 记录删除的设备
+    if (deletedIds.length > 0) {
+      console.log(`[DeviceStore] 清理了 ${deletedIds.length} 个离线设备 (10分钟未活跃):`, deletedIds);
     }
   }
 
