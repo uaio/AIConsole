@@ -45,6 +45,7 @@ export const handlers: Record<string, MessageHandler> = {
   },
 
   console: (data, context) => {
+    console.log('[Server] 收到 console 消息:', data);
     const { logStore } = context;
     logStore.push(data.deviceId, data);
     broadcastLog(data, context);
@@ -74,6 +75,7 @@ function broadcastDeviceList(context: MessageContext): void {
 
 function broadcastLog(log: any, context: MessageContext): void {
   const message = JSON.stringify({ type: 'log', data: log });
+  console.log(`[Server] 广播日志到 ${pcClients.size} 个 PC 客户端`);
 
   for (const client of pcClients) {
     if (client.readyState === WebSocket.OPEN) {
@@ -83,8 +85,12 @@ function broadcastLog(log: any, context: MessageContext): void {
 }
 
 export function registerPCClient(ws: WebSocket): void {
+  console.log('[Server] 注册 PC 客户端，当前总数:', pcClients.size + 1);
   pcClients.add(ws);
-  ws.on('close', () => pcClients.delete(ws));
+  ws.on('close', () => {
+    console.log('[Server] PC 客户端断开，剩余:', pcClients.size - 1);
+    pcClients.delete(ws);
+  });
 }
 
 // 定期清理无效的 PC 客户端连接（每 5 分钟）
