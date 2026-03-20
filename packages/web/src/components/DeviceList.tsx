@@ -55,6 +55,9 @@ export function DeviceList({ projectId, onSelectDevice, selectedDeviceId }: Devi
                 <div style={styles.deviceDetails}>
                   {device.screen} · {device.language}
                 </div>
+                <div style={styles.deviceId}>
+                  ID: {device.deviceId.slice(0, 8)}...
+                </div>
               </div>
 
               <div style={styles.deviceMeta}>
@@ -147,6 +150,12 @@ const styles = {
   deviceDetails: {
     fontSize: '12px',
     color: '#999'
+  },
+  deviceId: {
+    fontSize: '11px',
+    color: '#1890ff',
+    fontFamily: 'monospace',
+    marginTop: '2px'
   },
   deviceMeta: {
     display: 'flex',
