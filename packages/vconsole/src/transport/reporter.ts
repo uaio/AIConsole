@@ -1,4 +1,4 @@
-import type { DeviceInfo, ConsoleLogEntry } from '../types/index.js';
+import type { DeviceInfo, ConsoleLogEntry, NetworkRequestEntry, StorageSnapshot } from '../types/index.js';
 import { WebSocketTransport } from './websocket.js';
 import type { ConnectionState } from './websocket.js';
 
@@ -7,6 +7,7 @@ export class Reporter {
   private deviceInfo: DeviceInfo;
   private tabId: string;
   private remoteEnabled = true;
+  private onRefreshStorageCallback: (() => void) | null = null;
   private rateLimiter: {
     count: number;
     resetTime: number;
@@ -32,11 +33,21 @@ export class Reporter {
       {
         onConnect: () => {
           this.sendRegisterMessage();
+        },
+        onMessage: (data) => {
+          // 处理服务端请求
+          if (data.type === 'refresh_storage') {
+            this.onRefreshStorageCallback?.();
+          }
         }
       }
     );
 
     this.transport.connect();
+  }
+
+  onRefreshStorage(callback: () => void): void {
+    this.onRefreshStorageCallback = callback;
   }
 
   disconnect(): void {
@@ -77,6 +88,41 @@ export class Reporter {
     this.send({
       type: 'console',
       ...logEntry
+    });
+  }
+
+  reportNetwork(entry: Omit<NetworkRequestEntry, 'deviceId' | 'tabId'>): void {
+    if (!this.remoteEnabled || !this.transport) return;
+
+    // 网络请求使用独立的速率限制检查（因为数据量更大）
+    if (!this.checkRateLimit()) {
+      return;
+    }
+
+    const networkEntry: NetworkRequestEntry = {
+      ...entry,
+      deviceId: this.deviceInfo.deviceId,
+      tabId: this.tabId
+    };
+
+    this.send({
+      ...networkEntry,
+      type: 'network'
+    });
+  }
+
+  reportStorage(snapshot: Omit<StorageSnapshot, 'deviceId' | 'tabId'>): void {
+    if (!this.remoteEnabled || !this.transport) return;
+
+    const storageEntry: StorageSnapshot = {
+      ...snapshot,
+      deviceId: this.deviceInfo.deviceId,
+      tabId: this.tabId
+    };
+
+    this.send({
+      ...storageEntry,
+      type: 'storage'
     });
   }
 

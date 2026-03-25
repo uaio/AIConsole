@@ -19,8 +19,8 @@ export async function start(options: CLIOptions = {}) {
 
   app.use(cors());
 
-  const { deviceStore, logStore } = createWebSocketServer(server);
-  app.use(createRoutes(deviceStore, logStore));
+  const { deviceStore, logStore, networkStore, storageStore } = createWebSocketServer(server);
+  app.use(createRoutes(deviceStore, logStore, networkStore, storageStore));
 
   // 获取当前文件的目录路径
   const currentFilename = fileURLToPath(import.meta.url);

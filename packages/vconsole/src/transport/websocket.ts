@@ -6,6 +6,7 @@ export interface TransportEvents {
   onConnect?: () => void;
   onDisconnect?: () => void;
   onError?: (error: Error) => void;
+  onMessage?: (data: any) => void;
 }
 
 export class WebSocketTransport {
@@ -51,6 +52,15 @@ export class WebSocketTransport {
         while (this.messageQueue.length > 0) {
           const msg = this.messageQueue.shift();
           if (msg) this.send(msg);
+        }
+      };
+
+      this.ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          this.events.onMessage?.(data);
+        } catch {
+          // 忽略无效消息
         }
       };
 

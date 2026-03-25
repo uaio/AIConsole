@@ -20,7 +20,8 @@
   },
   "dependencies": {
     "@aiconsole/server": "workspace:*",
-    "@modelcontextprotocol/sdk": "^0.5.0"
+    "@modelcontextprotocol/sdk": "^0.5.0",
+    "open": "^10.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0"

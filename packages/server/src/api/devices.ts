@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { DeviceStore, LogStore } from '../store/index.js';
+import { DeviceStore, LogStore, NetworkStore, StorageStore } from '../store/index.js';
 
-export function createDeviceRoutes(deviceStore: DeviceStore, logStore: LogStore) {
+export function createDeviceRoutes(deviceStore: DeviceStore, logStore: LogStore, networkStore: NetworkStore, storageStore: StorageStore) {
   return {
     listDevices: (req: Request, res: Response) => {
       const projectId = req.query.projectId as string;
@@ -79,6 +79,46 @@ export function createDeviceRoutes(deviceStore: DeviceStore, logStore: LogStore)
         success: true,
         count
       });
+    },
+
+    getNetworkRequests: (req: Request, res: Response) => {
+      const { deviceId } = req.params;
+
+      // 验证并处理 limit 参数
+      const MAX_LIMIT = 500;
+      let limit: number | undefined;
+      if (req.query.limit) {
+        const parsedLimit = parseInt(req.query.limit as string, 10);
+        if (!isNaN(parsedLimit) && parsedLimit > 0) {
+          limit = Math.min(parsedLimit, MAX_LIMIT);
+        }
+      }
+
+      // 获取过滤参数
+      const method = req.query.method as string | undefined;
+      const urlPattern = req.query.urlPattern as string | undefined;
+      const statusStr = req.query.status as string | undefined;
+      let status: number | undefined;
+      if (statusStr) {
+        const parsedStatus = parseInt(statusStr, 10);
+        if (!isNaN(parsedStatus)) {
+          status = parsedStatus;
+        }
+      }
+
+      const requests = networkStore.get(deviceId, { limit, method, urlPattern, status });
+      res.json(requests);
+    },
+
+    getStorage: (req: Request, res: Response) => {
+      const { deviceId } = req.params;
+      const snapshot = storageStore.get(deviceId);
+
+      if (!snapshot) {
+        return res.status(404).json({ error: 'No storage data available for this device' });
+      }
+
+      res.json(snapshot);
     }
   };
 }

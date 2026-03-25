@@ -1,6 +1,8 @@
 import { getDeviceInfo, generateTabId, updateDeviceActiveTime } from './core/device.js';
 import { Reporter } from './transport/reporter.js';
-import type { RemoteConfig, ErudaConfig } from './types/index.js';
+import { NetworkInterceptor } from './interceptors/network.js';
+import { StorageReader } from './interceptors/storage.js';
+import type { RemoteConfig, ErudaConfig, NetworkInterceptorConfig } from './types/index.js';
 
 // Eruda 类型声明
 interface Eruda {
@@ -31,6 +33,8 @@ export interface AIConsoleOptions extends RemoteConfig {
   heartbeatInterval?: number;
   /** Eruda 调试面板配置 */
   eruda?: ErudaConfig;
+  /** 网络请求拦截配置 */
+  network?: NetworkInterceptorConfig;
 }
 
 /** 将参数序列化为字符串，正确处理对象 */
@@ -79,6 +83,8 @@ export class AIConsole {
   private originalConsole: OriginalConsole | null = null;
   private erudaInitialized = false;
   private eruda: Eruda | null = null;
+  private networkInterceptor: NetworkInterceptor | null = null;
+  private storageReader: StorageReader | null = null;
 
   constructor(options: AIConsoleOptions) {
     if (!options.projectId) {
@@ -106,6 +112,12 @@ export class AIConsole {
 
     // 拦截 console
     this.interceptConsole();
+
+    // 初始化网络请求拦截
+    this.initNetworkInterceptor(options.network);
+
+    // 初始化存储读取器
+    this.initStorageReader();
 
     // 标记实例存在
     (globalThis as Record<symbol, unknown>)[AICONSOLE_INSTANCE_KEY] = this;
@@ -194,6 +206,29 @@ export class AIConsole {
     console.info = createInterceptor('info', this.originalConsole.info);
   }
 
+  private initNetworkInterceptor(config?: NetworkInterceptorConfig): void {
+    const self = this;
+    this.networkInterceptor = new NetworkInterceptor(
+      (entry) => {
+        self.reporter.reportNetwork(entry);
+      },
+      config
+    );
+    this.networkInterceptor.start();
+  }
+
+  private initStorageReader(): void {
+    const self = this;
+    this.storageReader = new StorageReader((snapshot) => {
+      self.reporter.reportStorage(snapshot);
+    });
+
+    // 注册刷新存储的回调
+    this.reporter.onRefreshStorage(() => {
+      self.storageReader?.readAndReport();
+    });
+  }
+
   enableRemote(): void {
     this.reporter.enableRemote();
   }
@@ -232,6 +267,17 @@ export class AIConsole {
       this.eruda.destroy();
       this.erudaInitialized = false;
       this.eruda = null;
+    }
+
+    // 停止网络拦截
+    if (this.networkInterceptor) {
+      this.networkInterceptor.stop();
+      this.networkInterceptor = null;
+    }
+
+    // 清理存储读取器
+    if (this.storageReader) {
+      this.storageReader = null;
     }
 
     this.reporter.disconnect();

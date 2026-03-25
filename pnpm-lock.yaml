@@ -186,6 +186,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^0.5.0
         version: 0.5.0
+      open:
+        specifier: ^10.0.0
+        version: 10.2.0
     devDependencies:
       '@types/node':
         specifier: ^20.0.0

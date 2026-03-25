@@ -1,10 +1,12 @@
 import { WebSocket } from 'ws';
-import { DeviceStore, LogStore } from '../store/index.js';
+import { DeviceStore, LogStore, NetworkStore, StorageStore } from '../store/index.js';
 
 export interface MessageContext {
   ws: WebSocket;
   deviceStore: DeviceStore;
   logStore: LogStore;
+  networkStore: NetworkStore;
+  storageStore: StorageStore;
   deviceIds: Map<WebSocket, string>;
 }
 
@@ -57,6 +59,17 @@ export const handlers: Record<string, MessageHandler> = {
     if (deviceId) {
       deviceStore.updateActiveTime(deviceId);
     }
+  },
+
+  network: (data, context) => {
+    const { networkStore } = context;
+    networkStore.push(data.deviceId, data);
+    broadcastNetwork(data, context);
+  },
+
+  storage: (data, context) => {
+    const { storageStore } = context;
+    storageStore.update(data.deviceId, data);
   }
 };
 
@@ -76,6 +89,16 @@ function broadcastDeviceList(context: MessageContext): void {
 function broadcastLog(log: any, context: MessageContext): void {
   const message = JSON.stringify({ type: 'log', data: log });
   console.log(`[Server] 广播日志到 ${pcClients.size} 个 PC 客户端`);
+
+  for (const client of pcClients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  }
+}
+
+function broadcastNetwork(request: any, context: MessageContext): void {
+  const message = JSON.stringify({ type: 'network', data: request });
 
   for (const client of pcClients) {
     if (client.readyState === WebSocket.OPEN) {

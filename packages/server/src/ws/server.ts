@@ -1,11 +1,13 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server as HTTPServer } from 'http';
-import { DeviceStore, LogStore } from '../store/index.js';
+import { DeviceStore, LogStore, NetworkStore, StorageStore } from '../store/index.js';
 import { handlers, type MessageContext, registerPCClient } from './handlers.js';
 
 export function createWebSocketServer(httpServer: HTTPServer) {
   const deviceStore = new DeviceStore();
   const logStore = new LogStore();
+  const networkStore = new NetworkStore();
+  const storageStore = new StorageStore();
   const deviceIds = new Map<WebSocket, string>();
 
   const wss = new WebSocketServer({ server: httpServer });
@@ -30,6 +32,8 @@ export function createWebSocketServer(httpServer: HTTPServer) {
               ws,
               deviceStore,
               logStore,
+              networkStore,
+              storageStore,
               deviceIds
             };
             handler(message, context);
@@ -47,19 +51,25 @@ export function createWebSocketServer(httpServer: HTTPServer) {
           deviceStore.unregister(deviceId);
           // P0-1: 清理设备日志（延迟 30 分钟后删除）
           logStore.cleanup(deviceId);
+          // 清理网络请求
+          networkStore.cleanup(deviceId);
+          // 清理存储快照
+          storageStore.cleanup(deviceId);
           deviceIds.delete(ws);
         }
       }
     });
   });
 
-  return { wss, deviceStore, logStore };
+  return { wss, deviceStore, logStore, networkStore, storageStore };
 }
 
 // P0-2: 导出清理函数，用于服务器关闭时清理资源
 export function cleanupWebSocketServer(
   deviceStore: DeviceStore,
   logStore: LogStore,
+  networkStore: NetworkStore,
+  storageStore: StorageStore,
   wss: WebSocketServer
 ): void {
   // 关闭 WebSocket 服务器

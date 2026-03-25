@@ -38,3 +38,46 @@ export interface ErudaConfig {
     theme?: string;
   };
 }
+
+/** 网络请求记录 */
+export interface NetworkRequestEntry {
+  deviceId: string;
+  tabId: string;
+  id: string;
+  timestamp: number;
+  method: string;
+  url: string;
+  status?: number;
+  statusText?: string;
+  requestHeaders?: Record<string, string>;
+  requestBody?: string;
+  responseHeaders?: Record<string, string>;
+  responseBody?: string;
+  duration?: number;
+  type: 'xhr' | 'fetch';
+  error?: string;
+}
+
+/** 网络拦截器配置 */
+export interface NetworkInterceptorConfig {
+  /** 是否启用，默认 true */
+  enabled?: boolean;
+  /** 请求体最大捕获大小（字节），默认 10KB */
+  maxRequestBodySize?: number;
+  /** 响应体最大捕获大小（字节），默认 10KB */
+  maxResponseBodySize?: number;
+  /** 忽略的 URL 模式（正则字符串数组） */
+  ignoreUrls?: string[];
+}
+
+/** 存储快照 */
+export interface StorageSnapshot {
+  deviceId: string;
+  tabId: string;
+  timestamp: number;
+  localStorage: Record<string, string>;
+  sessionStorage: Record<string, string>;
+  cookies: string;
+  localStorageSize: number;
+  sessionStorageSize: number;
+}
