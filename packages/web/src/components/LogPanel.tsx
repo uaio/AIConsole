@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import { useLogs } from '../hooks/useLogs.js';
 import { LogEntry } from './LogEntry.js';
 import { api } from '../api/client.js';
@@ -60,11 +60,14 @@ export function LogPanel({ deviceId }: LogPanelProps) {
     }
   };
 
-  const filteredLogs = logs.filter(log => {
-    const levelMatch = filterLevel === 'all' || log.level === filterLevel;
-    const textMatch = !searchText || log.message.toLowerCase().includes(searchText.toLowerCase());
-    return levelMatch && textMatch;
-  });
+  const filteredLogs = useMemo(() =>
+    logs.filter(log => {
+      const levelMatch = filterLevel === 'all' || log.level === filterLevel;
+      const textMatch = !searchText || log.message.toLowerCase().includes(searchText.toLowerCase());
+      return levelMatch && textMatch;
+    }),
+    [logs, filterLevel, searchText]
+  );
 
   return (
     <div style={styles.container}>
@@ -117,6 +120,31 @@ export function LogPanel({ deviceId }: LogPanelProps) {
         </div>
       </div>
 
+      {/* 筛选工具栏 */}
+      <div style={styles.toolbar}>
+        <div style={styles.levelButtons}>
+          {(['all', 'log', 'warn', 'error', 'info'] as const).map(level => (
+            <button
+              key={level}
+              onClick={() => setFilterLevel(level)}
+              style={{
+                ...styles.levelButton,
+                ...(filterLevel === level ? styles.levelButtonActive : {})
+              }}
+            >
+              {level === 'all' ? '全部' : level.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <input
+          type="text"
+          placeholder="搜索日志..."
+          value={searchText}
+          onChange={e => setSearchText(e.target.value)}
+          style={styles.searchInput}
+        />
+      </div>
+
       <div
         ref={containerRef}
         style={styles.logContainer}
@@ -128,12 +156,14 @@ export function LogPanel({ deviceId }: LogPanelProps) {
           </div>
         ) : filteredLogs.length === 0 ? (
           <div style={styles.empty}>
-            <div style={styles.emptyIcon}>📝</div>
+            <div style={styles.emptyIcon}>{logs.length === 0 ? '📝' : '🔍'}</div>
             <div style={styles.emptyText}>
-              暂无日志
+              {logs.length === 0 ? '暂无日志' : '没有匹配的日志'}
             </div>
             <div style={styles.emptyHint}>
-              在移动设备上执行操作后，日志将自动显示在这里
+              {logs.length === 0
+                ? '在移动设备上执行操作后，日志将自动显示在这里'
+                : `共 ${logs.length} 条日志，尝试调整筛选条件`}
             </div>
           </div>
         ) : (
@@ -163,6 +193,42 @@ const styles = {
     padding: '12px 16px',
     borderBottom: '1px solid #e0e0e0',
     backgroundColor: '#fafafa'
+  },
+  toolbar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    padding: '8px 16px',
+    borderBottom: '1px solid #e0e0e0',
+    backgroundColor: '#fafafa'
+  },
+  levelButtons: {
+    display: 'flex',
+    gap: '4px'
+  },
+  levelButton: {
+    padding: '4px 10px',
+    fontSize: '12px',
+    border: '1px solid #d9d9d9',
+    borderRadius: '3px',
+    backgroundColor: '#fff',
+    color: '#666',
+    cursor: 'pointer',
+    transition: 'all 0.2s'
+  },
+  levelButtonActive: {
+    backgroundColor: '#1890ff',
+    color: '#fff',
+    borderColor: '#1890ff'
+  },
+  searchInput: {
+    flex: 1,
+    padding: '4px 10px',
+    fontSize: '12px',
+    border: '1px solid #d9d9d9',
+    borderRadius: '3px',
+    outline: 'none',
+    backgroundColor: '#fff'
   },
   titleSection: {
     display: 'flex',
